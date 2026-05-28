@@ -4134,6 +4134,34 @@ defmodule AshPostgres.MigrationGeneratorTest do
       assert file =~
                ~S[add :product_code, :binary]
     end
+
+    test "when default value uses dump_to_native for custom type", %{
+      snapshot_path: snapshot_path,
+      migration_path: migration_path
+    } do
+      defposts do
+        attributes do
+          uuid_primary_key(:id)
+          attribute(:state, AshPostgres.Test.Types.AtomAsInteger, default: :active, public?: true)
+        end
+      end
+
+      defdomain([Post])
+
+      AshPostgres.MigrationGenerator.generate(Domain,
+        snapshot_path: snapshot_path,
+        migration_path: migration_path,
+        quiet: true,
+        format: false,
+        auto_name: true
+      )
+
+      assert [file1] =
+               Enum.sort(Path.wildcard("#{migration_path}/**/*_migrate_resources*.exs"))
+               |> Enum.reject(&String.contains?(&1, "extensions"))
+
+      assert File.read!(file1) =~ ~S[add :state, :integer, default: 1]
+    end
   end
 
   describe "follow up with references" do

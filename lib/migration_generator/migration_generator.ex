@@ -4479,7 +4479,13 @@ defmodule AshPostgres.MigrationGenerator do
             default
 
           :error ->
-            EctoMigrationDefault.to_default(value)
+            case migration_default_from_dump(type, Map.get(attr, :constraints, []), value) do
+              {:ok, dumped} ->
+                EctoMigrationDefault.to_default(dumped)
+
+              :error ->
+                EctoMigrationDefault.to_default(value)
+            end
         end
 
       default ->
@@ -4501,6 +4507,36 @@ defmodule AshPostgres.MigrationGenerator do
       :error
     end
   end
+
+  defp migration_default_from_dump(type, constraints, value) do
+    type =
+      type
+      |> unwrap_type()
+      |> Ash.Type.get_type()
+
+    type = Code.ensure_compiled!(type)
+
+    case type.dump_to_native(value, constraints) do
+      {:ok, dumped} ->
+        if migration_default_dumpable?(dumped), do: {:ok, dumped}, else: :error
+
+      _ ->
+        :error
+    end
+  end
+
+  defp migration_default_dumpable?(value)
+       when is_integer(value) or is_float(value) or is_boolean(value) or is_nil(value),
+       do: true
+
+  defp migration_default_dumpable?(value) when is_binary(value), do: String.valid?(value)
+
+  defp migration_default_dumpable?(%Decimal{}), do: true
+  defp migration_default_dumpable?(%DateTime{}), do: true
+  defp migration_default_dumpable?(%NaiveDateTime{}), do: true
+  defp migration_default_dumpable?(%Date{}), do: true
+  defp migration_default_dumpable?(%Time{}), do: true
+  defp migration_default_dumpable?(_), do: false
 
   defp unwrap_type({:array, type}), do: unwrap_type(type)
   defp unwrap_type(type), do: type
